@@ -125,17 +125,16 @@ class ApprovalService:
                 force_outcome="SUCCESS",
             )
 
-            if retry_res.success:
-                case.recovered_amount = exec_amount
-                audit_rec = RecoveryStateMachine.transition(
+            if retry_res.success and retry_res.provider_reference:
+                from app.services.payment_verification import PaymentVerificationService
+                await PaymentVerificationService.verify_and_reconcile(
+                    session=session,
                     case=case,
-                    to_state=RecoveryState.RECOVERED,
-                    actor_type=ActorType.RECOVERY_EXECUTOR,
+                    provider_reference=retry_res.provider_reference,
+                    attempted_amount=exec_amount,
+                    provider=provider,
                     actor_id=f"operator_approved_{operator_id}",
-                    reason=f"Payment of ₹{exec_amount:,.0f} recovered via human approval.",
-                    metadata={"provider_reference": retry_res.provider_reference},
                 )
-                session.add(audit_rec)
 
             await session.commit()
             return {

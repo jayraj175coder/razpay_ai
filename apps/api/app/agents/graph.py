@@ -225,14 +225,29 @@ class RecoveryAgentGraph:
                 }
 
     async def _node_verify_result(self, state: RecoveryAgentState) -> Dict[str, Any]:
-        """Node 8: Verify Outcome & Ledger updates."""
-        exec_res = state["execution_result"] or {}
-        if exec_res.get("success") is True and state["strategy"]["recommended_action"] == "RETRY_PAYMENT":
-            return {"final_status": RecoveryState.RECOVERED.value}
-        return {}
+        """Node 8: Verify Outcome against Provider Settlement before marking RECOVERED."""
+        exec_res = state.get("execution_result") or {}
+        ref = exec_res.get("provider_reference")
+
+        if exec_res.get("status") == "escalated":
+            return {"final_status": RecoveryState.ESCALATED.value}
+        if exec_res.get("status") == "blocked":
+            return {"final_status": RecoveryState.STOPPED.value}
+
+        if ref and state["strategy"]["recommended_action"] == "RETRY_PAYMENT":
+            provider = get_payment_provider()
+            v_res = await provider.verify_payment(ref)
+            if v_res.is_verified_captured:
+                return {"final_status": RecoveryState.RECOVERED.value, "verified_amount": state["case"]["amount_at_risk"]}
+            elif v_res.status in ["pending", "authorized"]:
+                return {"final_status": RecoveryState.AWAITING_RESULT.value}
+            else:
+                return {"final_status": RecoveryState.RETRY_SCHEDULED.value}
+
+        return {"final_status": state.get("final_status") or RecoveryState.EXECUTING.value}
 
     async def _node_update_recovery_ledger(self, state: RecoveryAgentState) -> Dict[str, Any]:
-        """Node 9: Persist updates to DB RecoveryCase and Actions."""
+        """Node 9: Persist updates to DB RecoveryCase, RecoveryAttempt, and Actions."""
         stmt = select(RecoveryCase).where(RecoveryCase.id == state["case_id"])
         res = await self.session.execute(stmt)
         case_obj = res.scalars().first()
@@ -254,7 +269,7 @@ class RecoveryAgentGraph:
             final_st = state.get("final_status") or RecoveryState.EXECUTING.value
             case_obj.status = RecoveryState(final_st)
             if case_obj.status == RecoveryState.RECOVERED:
-                case_obj.recovered_amount = case_obj.amount_at_risk
+                case_obj.recovered_amount = state.get("verified_amount", case_obj.amount_at_risk)
 
             # Record RecoveryAction
             action_rec = RecoveryAction(

@@ -102,7 +102,16 @@ async def seed_database(session: AsyncSession) -> None:
         lifetime_value=45000.0,  # ₹45k
         created_at=datetime.now(timezone.utc) - timedelta(days=45),
     )
-    session.add_all([c1, c2, c3, c4])
+    c_acme = Customer(
+        id="cust_acme_golden",
+        name="Acme Pvt Ltd",
+        email="finance@acme.in",
+        phone="+919820011223",
+        segment=CustomerSegment.VIP,
+        lifetime_value=850000.0,  # ₹8.5 Lakhs
+        created_at=datetime.now(timezone.utc) - timedelta(days=150),
+    )
+    session.add_all([c1, c2, c3, c4, c_acme])
     await session.flush()
 
     # 3. Transactions & Invoices
@@ -139,6 +148,60 @@ async def seed_database(session: AsyncSession) -> None:
         provider="razorpay",
         provider_reference="pay_settled_03",
         created_at=datetime.now(timezone.utc) - timedelta(days=60),
+    )
+
+    # 14 Historical successful payments for Acme Pvt Ltd
+    acme_past_txns = [
+        Transaction(
+            id=f"txn_acme_succ_{i+1:02d}",
+            customer_id=c_acme.id,
+            amount=60000.0,
+            currency="INR",
+            status=TransactionStatus.SUCCESS,
+            transaction_type=TransactionType.SUBSCRIPTION,
+            provider="razorpay",
+            provider_reference=f"pay_acme_settled_{i+1:02d}",
+            created_at=datetime.now(timezone.utc) - timedelta(days=150 - (i * 10)),
+        )
+        for i in range(14)
+    ]
+    # 2 Past transient failures for Acme
+    acme_fail_1 = Transaction(
+        id="txn_acme_fail_01",
+        customer_id=c_acme.id,
+        amount=85000.0,
+        currency="INR",
+        status=TransactionStatus.FAILED,
+        transaction_type=TransactionType.SUBSCRIPTION,
+        failure_reason="network_timeout",
+        provider="razorpay",
+        provider_reference="pay_acme_fail_01",
+        created_at=datetime.now(timezone.utc) - timedelta(days=2),
+    )
+    acme_fail_2 = Transaction(
+        id="txn_acme_fail_02",
+        customer_id=c_acme.id,
+        amount=85000.0,
+        currency="INR",
+        status=TransactionStatus.FAILED,
+        transaction_type=TransactionType.SUBSCRIPTION,
+        failure_reason="gateway_error",
+        provider="razorpay",
+        provider_reference="pay_acme_fail_02",
+        created_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    # Active Golden Transaction
+    t_golden = Transaction(
+        id="txn_golden_acme_85k",
+        customer_id=c_acme.id,
+        amount=85000.0,
+        currency="INR",
+        status=TransactionStatus.FAILED,
+        transaction_type=TransactionType.SUBSCRIPTION,
+        failure_reason="network_timeout",
+        provider="razorpay",
+        provider_reference="pay_golden_acme_init",
+        created_at=datetime.now(timezone.utc) - timedelta(hours=3),
     )
 
     t1 = Transaction(
@@ -201,7 +264,7 @@ async def seed_database(session: AsyncSession) -> None:
         due_date=datetime.now(timezone.utc) - timedelta(days=5),
         created_at=datetime.now(timezone.utc) - timedelta(days=35),
     )
-    session.add_all([t1_hist, t2_hist, t3_hist, t1, t2, t3, t4, inv1])
+    session.add_all([t1_hist, t2_hist, t3_hist, *acme_past_txns, acme_fail_1, acme_fail_2, t_golden, t1, t2, t3, t4, inv1])
     await session.flush()
 
     # Payments attempts
@@ -365,7 +428,38 @@ async def seed_database(session: AsyncSession) -> None:
         created_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
 
-    session.add_all([rc1, rc2, rc3, rc4])
+    # Golden Demo Case: Acme Pvt Ltd (₹85,000, 14 successful payments, 2 recent failures)
+    rc_golden = RecoveryCase(
+        id="RCV-ACME-85K",
+        source_type=RecoverySourceType.SUBSCRIPTION_DUNNING,
+        source_id=t_golden.id,
+        customer_id=c_acme.id,
+        amount_at_risk=85000.0,
+        currency="INR",
+        recovery_probability=0.87,
+        priority_score=88.5,
+        risk_category=RiskCategory.HIGH,
+        root_cause="network_timeout",
+        root_cause_explanation="Temporary bank gateway timeout on recurring subscription charge.",
+        recommended_action="RETRY_PAYMENT",
+        recommended_channel="SMART_RETRY",
+        ai_reasoning="Strong historical track record (14 past settlements). Transient network timeout is fully recoverable via off-peak smart retry.",
+        signals_json={
+            "positive": [
+                "+ 14 previous successful payments on record",
+                "+ High LTV VIP Customer (₹8,50,000)",
+                "+ Transient failure type (network_timeout)",
+            ],
+            "negative": [
+                "- 2 recent failed attempts during bank server peak downtime",
+            ],
+        },
+        status=RecoveryState.DETECTED,
+        recovered_amount=0.0,
+        created_at=datetime.now(timezone.utc) - timedelta(hours=3),
+    )
+
+    session.add_all([rc1, rc2, rc3, rc4, rc_golden])
     await session.flush()
 
     # 5. Promise to pay for Case 3

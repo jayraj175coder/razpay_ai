@@ -20,7 +20,8 @@ testpaths = [
 ]
 pythonpath = [
     ".",
-    "app"
+    "app",
+    "../.."
 ]
 
 [tool.black]

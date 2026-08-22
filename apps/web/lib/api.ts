@@ -186,6 +186,16 @@ export async function fetchAuditLogs(params?: { case_id?: string; actor_type?: s
   return res.json();
 }
 
+export async function runSimulation(count: number = 100, seed: number = 42): Promise<any> {
+  const res = await fetch(`${API_BASE}/simulation/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ count, seed }),
+  });
+  if (!res.ok) throw new Error("Simulation run failed");
+  return res.json();
+}
+
 export async function simulateWebhook(payload: any): Promise<any> {
   const res = await fetch(`${API_BASE}/webhooks/simulate`, {
     method: "POST",

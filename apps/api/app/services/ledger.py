@@ -131,21 +131,25 @@ class LedgerService:
         for c in cases:
             if search and search.lower() not in (c.id.lower() + " " + (c.customer.name if c.customer else "").lower()):
                 continue
+            r_cat = c.risk_category.value if hasattr(c.risk_category, "value") else str(c.risk_category)
+            s_type = c.source_type.value if hasattr(c.source_type, "value") else str(c.source_type)
+            st = c.status.value if hasattr(c.status, "value") else str(c.status)
+            c_seg = c.customer.segment.value if (c.customer and hasattr(c.customer.segment, "value")) else (str(c.customer.segment) if c.customer else "RETAIL")
             results.append({
                 "id": c.id,
-                "source_type": c.source_type.value,
+                "source_type": s_type,
                 "source_id": c.source_id,
                 "customer_id": c.customer_id,
                 "customer_name": c.customer.name if c.customer else "Unknown",
-                "customer_segment": c.customer.segment.value if c.customer else "RETAIL",
+                "customer_segment": c_seg,
                 "amount_at_risk": c.amount_at_risk,
                 "currency": c.currency,
                 "recovery_probability": c.recovery_probability,
                 "priority_score": c.priority_score,
-                "risk_category": c.risk_category.value,
+                "risk_category": r_cat,
                 "root_cause": c.root_cause,
                 "recommended_action": c.recommended_action,
-                "status": c.status.value,
+                "status": st,
                 "recovered_amount": c.recovered_amount,
                 "created_at": c.created_at.isoformat(),
                 "updated_at": c.updated_at.isoformat(),
@@ -171,30 +175,35 @@ class LedgerService:
         if not case:
             return None
 
+        r_cat = case.risk_category.value if hasattr(case.risk_category, "value") else str(case.risk_category)
+        s_type = case.source_type.value if hasattr(case.source_type, "value") else str(case.source_type)
+        st = case.status.value if hasattr(case.status, "value") else str(case.status)
+        c_seg = case.customer.segment.value if (case.customer and hasattr(case.customer.segment, "value")) else (str(case.customer.segment) if case.customer else "RETAIL")
+
         return {
             "id": case.id,
-            "source_type": case.source_type.value,
+            "source_type": s_type,
             "source_id": case.source_id,
             "customer": {
                 "id": case.customer.id,
                 "name": case.customer.name,
                 "email": case.customer.email,
                 "phone": case.customer.phone,
-                "segment": case.customer.segment.value,
+                "segment": c_seg,
                 "lifetime_value": case.customer.lifetime_value,
             } if case.customer else None,
             "amount_at_risk": case.amount_at_risk,
             "currency": case.currency,
             "recovery_probability": case.recovery_probability,
             "priority_score": case.priority_score,
-            "risk_category": case.risk_category.value,
+            "risk_category": r_cat,
             "root_cause": case.root_cause,
             "root_cause_explanation": case.root_cause_explanation,
             "recommended_action": case.recommended_action,
             "recommended_channel": case.recommended_channel,
             "ai_reasoning": case.ai_reasoning,
             "signals": case.signals_json or {},
-            "status": case.status.value,
+            "status": st,
             "stopping_reason": case.stopping_reason,
             "recovered_amount": case.recovered_amount,
             "actions": [

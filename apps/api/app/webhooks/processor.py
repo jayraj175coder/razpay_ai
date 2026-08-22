@@ -2,7 +2,7 @@
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -156,7 +156,12 @@ class WebhookProcessor:
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Handle payment.failed event."""
-        payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", payload)
+        payment_entity = (
+            payload.get("payload", {}).get("payment", {}).get("entity")
+            or payload.get("payment", {}).get("entity")
+            or payload.get("payment")
+            or payload
+        )
         amount = float(payment_entity.get("amount", 0.0))
         # Convert paise if integer amount > 1000 and has currency INR
         if amount > 1000 and isinstance(payment_entity.get("amount"), int):

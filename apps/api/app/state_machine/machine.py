@@ -53,6 +53,7 @@ VALID_TRANSITIONS: Dict[RecoveryState, Set[RecoveryState]] = {
     },
     RecoveryState.APPROVED: {
         RecoveryState.EXECUTING,
+        RecoveryState.RECOVERED,
         RecoveryState.STOPPED,
     },
     RecoveryState.REJECTED: {

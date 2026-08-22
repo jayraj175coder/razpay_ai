@@ -99,9 +99,10 @@ class RevenueRiskEngine:
             positive_signals.append(f"+ Established customer LTV (₹{lifetime_value:,.0f})")
 
         # 3. Customer Segment
-        if customer_segment in [CustomerSegment.ENTERPRISE, CustomerSegment.VIP]:
+        seg_val = customer_segment.value if hasattr(customer_segment, "value") else str(customer_segment)
+        if seg_val in ["ENTERPRISE", "VIP"]:
             prob += 0.05
-            positive_signals.append(f"+ Prioritized customer tier: {customer_segment.value}")
+            positive_signals.append(f"+ Prioritized customer tier: {seg_val}")
 
         # 4. Promise to Pay
         if has_promise_to_pay:

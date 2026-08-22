@@ -186,6 +186,36 @@ export async function fetchAuditLogs(params?: { case_id?: string; actor_type?: s
   return res.json();
 }
 
+export async function fetchPromises(status?: string): Promise<{ promises: any[]; count: number }> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const res = await fetch(`${API_BASE}/promises?${params.toString()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch promises");
+  return res.json();
+}
+
+export async function extractPromise(caseId: string, customerId: string, messageText: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/promises/extract`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ case_id: caseId, customer_id: customerId, message_text: messageText }),
+  });
+  if (!res.ok) throw new Error("Failed to extract promise");
+  return res.json();
+}
+
+export async function fulfillPromise(promiseId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/promises/${promiseId}/fulfill`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to fulfill promise");
+  return res.json();
+}
+
+export async function escalatePromise(promiseId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/promises/${promiseId}/escalate`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to escalate promise");
+  return res.json();
+}
+
 export async function runSimulation(count: number = 100, seed: number = 42): Promise<any> {
   const res = await fetch(`${API_BASE}/simulation/run`, {
     method: "POST",

@@ -79,6 +79,37 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Interactive Golden Demo Showcase Banner */}
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/40 via-slate-900/80 to-blue-950/40 p-6 backdrop-blur-md shadow-xl">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1 max-w-2xl">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-bold font-mono">
+                  DEMO / SANDBOX MODE
+                </span>
+                <span className="text-xs font-mono text-slate-400">Golden Case: RCV-ACME-85K</span>
+              </div>
+              <h2 className="text-lg font-extrabold text-white tracking-tight">
+                Live Autonomous Recovery Demo: Acme Pvt Ltd (<span className="text-emerald-400">₹85,000</span>)
+              </h2>
+              <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                14 historical successful payments • Temporary network timeout • Autonomous AI diagnosis, bounded policy evaluation, payment execution, and verified financial reconciliation.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                disabled={diagnosingId === "RCV-ACME-85K"}
+                onClick={() => handleDiagnose("RCV-ACME-85K")}
+                className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 transition shadow-lg shadow-emerald-500/25 disabled:opacity-50"
+              >
+                <Bot className="h-4 w-4" />
+                {diagnosingId === "RCV-ACME-85K" ? "Executing Recovery Agent..." : "⚡ Run Golden Recovery Demo"}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Top KPI Metrics Grid */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KPICard

@@ -327,6 +327,41 @@ export default function CaseInvestigationPage() {
                   </div>
                 </div>
               )}
+
+              {/* Guardrail: Why Didn't You Act? / Block Explanation */}
+              {(caseData.status === "STOPPED" || caseData.status === "FAILED" || (caseData.actions.length > 0 && caseData.actions[0].policy_decision === "BLOCKED")) && (
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3.5 space-y-2">
+                  <div className="flex items-center gap-1.5 text-rose-400 font-bold text-xs uppercase tracking-wider font-mono">
+                    <ShieldAlert className="h-4 w-4 shrink-0" />
+                    <span>Guardrail Enforced: No Automated Action Taken</span>
+                  </div>
+                  <p className="text-xs text-rose-200 leading-relaxed font-sans">
+                    {caseData.actions[0]?.policy_reason || "Automated recovery halted by deterministic safety rules."}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] font-mono text-rose-300/80 pt-1 border-t border-rose-500/20">
+                    <span>Rule: Max Retries (3) / Fraud Policy</span>
+                    <span>Action: Preserved Customer Goodwill</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Verification Status */}
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Gateway Settlement Status:</span>
+                  <span className={`text-xs font-mono font-bold ${
+                    isRecovered ? "text-emerald-400" : caseData.status === "EXECUTING" ? "text-amber-400" : "text-slate-300"
+                  }`}>
+                    {isRecovered ? "CAPTURED & RECONCILED" : (caseData.status === "EXECUTING" ? "PENDING SETTLEMENT" : "AWAITING ACTION")}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Reconciled Amount:</span>
+                  <span className="font-mono text-xs font-bold text-white">
+                    {formatINR(caseData.recovered_amount)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,0 +1,127 @@
+"""Domain enumerations for RecoverAI."""
+from enum import Enum
+
+
+class CustomerSegment(str, Enum):
+    ENTERPRISE = "ENTERPRISE"
+    SMB = "SMB"
+    RETAIL = "RETAIL"
+    VIP = "VIP"
+
+
+class TransactionStatus(str, Enum):
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    REFUNDED = "REFUNDED"
+
+
+class TransactionType(str, Enum):
+    ONE_TIME = "ONE_TIME"
+    SUBSCRIPTION = "SUBSCRIPTION"
+    INVOICE = "INVOICE"
+    CHECKOUT = "CHECKOUT"
+
+
+class PaymentStatus(str, Enum):
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+
+
+class SubscriptionStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    PAST_DUE = "PAST_DUE"
+    CANCELLED = "CANCELLED"
+    HALTED = "HALTED"
+
+
+class BillingCycle(str, Enum):
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    ANNUAL = "ANNUAL"
+
+
+class InvoiceStatus(str, Enum):
+    DRAFT = "DRAFT"
+    ISSUED = "ISSUED"
+    OVERDUE = "OVERDUE"
+    PAID = "PAID"
+    WRITTEN_OFF = "WRITTEN_OFF"
+
+
+class RecoverySourceType(str, Enum):
+    PAYMENT_FAILURE = "PAYMENT_FAILURE"
+    SUBSCRIPTION_DUNNING = "SUBSCRIPTION_DUNNING"
+    CHECKOUT_ABANDONMENT = "CHECKOUT_ABANDONMENT"
+    OVERDUE_INVOICE = "OVERDUE_INVOICE"
+
+
+class RecoveryState(str, Enum):
+    DETECTED = "DETECTED"
+    DIAGNOSED = "DIAGNOSED"
+    ACTION_PROPOSED = "ACTION_PROPOSED"
+    POLICY_CHECK = "POLICY_CHECK"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    EXECUTING = "EXECUTING"
+    AWAITING_RESULT = "AWAITING_RESULT"
+    RECOVERED = "RECOVERED"
+    FAILED = "FAILED"
+    RETRY_SCHEDULED = "RETRY_SCHEDULED"
+    ESCALATED = "ESCALATED"
+    STOPPED = "STOPPED"
+
+
+class RecoveryActionType(str, Enum):
+    RETRY_PAYMENT = "RETRY_PAYMENT"
+    SEND_PAYMENT_REMINDER = "SEND_PAYMENT_REMINDER"
+    CREATE_PAYMENT_LINK = "CREATE_PAYMENT_LINK"
+    OFFER_DISCOUNT = "OFFER_DISCOUNT"
+    SCHEDULE_CALL = "SCHEDULE_CALL"
+    ESCALATE_HUMAN = "ESCALATE_HUMAN"
+
+
+class PolicyDecision(str, Enum):
+    ALLOWED = "ALLOWED"
+    BLOCKED = "BLOCKED"
+    REQUIRES_HUMAN_APPROVAL = "REQUIRES_HUMAN_APPROVAL"
+
+
+class ActionExecutionStatus(str, Enum):
+    PENDING = "PENDING"
+    EXECUTED = "EXECUTED"
+    BLOCKED = "BLOCKED"
+    CANCELLED = "CANCELLED"
+
+
+class PromiseStatus(str, Enum):
+    PROMISED = "PROMISED"
+    WAITING = "WAITING"
+    FULFILLED = "FULFILLED"
+    BROKEN = "BROKEN"
+    ESCALATED = "ESCALATED"
+
+
+class WebhookStatus(str, Enum):
+    RECEIVED = "RECEIVED"
+    PROCESSING = "PROCESSING"
+    PROCESSED = "PROCESSED"
+    DUPLICATE = "DUPLICATE"
+    FAILED = "FAILED"
+
+
+class ActorType(str, Enum):
+    AI_AGENT = "AI_AGENT"
+    POLICY_ENGINE = "POLICY_ENGINE"
+    HUMAN_OPERATOR = "HUMAN_OPERATOR"
+    WEBHOOK_SYSTEM = "WEBHOOK_SYSTEM"
+    RECOVERY_EXECUTOR = "RECOVERY_EXECUTOR"
+    SYSTEM = "SYSTEM"
+
+
+class RiskCategory(str, Enum):
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"

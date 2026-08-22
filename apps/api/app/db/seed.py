@@ -106,6 +106,41 @@ async def seed_database(session: AsyncSession) -> None:
     await session.flush()
 
     # 3. Transactions & Invoices
+    # Past successful transactions for historical track record
+    t1_hist = Transaction(
+        id="txn_succ_01",
+        customer_id=c1.id,
+        amount=250000.0,
+        currency="INR",
+        status=TransactionStatus.SUCCESS,
+        transaction_type=TransactionType.INVOICE,
+        provider="razorpay",
+        provider_reference="pay_settled_01",
+        created_at=datetime.now(timezone.utc) - timedelta(days=30),
+    )
+    t2_hist = Transaction(
+        id="txn_succ_02",
+        customer_id=c2.id,
+        amount=24500.0,
+        currency="INR",
+        status=TransactionStatus.SUCCESS,
+        transaction_type=TransactionType.SUBSCRIPTION,
+        provider="razorpay",
+        provider_reference="pay_settled_02",
+        created_at=datetime.now(timezone.utc) - timedelta(days=35),
+    )
+    t3_hist = Transaction(
+        id="txn_succ_03",
+        customer_id=c3.id,
+        amount=85000.0,
+        currency="INR",
+        status=TransactionStatus.SUCCESS,
+        transaction_type=TransactionType.ONE_TIME,
+        provider="razorpay",
+        provider_reference="pay_settled_03",
+        created_at=datetime.now(timezone.utc) - timedelta(days=60),
+    )
+
     t1 = Transaction(
         id="txn_fail_01",
         customer_id=c1.id,
@@ -154,7 +189,19 @@ async def seed_database(session: AsyncSession) -> None:
         provider_reference="pay_R4tZ8m11223",
         created_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
-    session.add_all([t1, t2, t3, t4])
+
+    # Invoices
+    inv1 = Invoice(
+        id="inv_enterprise_01",
+        customer_id=c1.id,
+        invoice_number="INV-2026-NX01",
+        amount=125000.0,
+        currency="INR",
+        status=InvoiceStatus.OVERDUE,
+        due_date=datetime.now(timezone.utc) - timedelta(days=5),
+        created_at=datetime.now(timezone.utc) - timedelta(days=35),
+    )
+    session.add_all([t1_hist, t2_hist, t3_hist, t1, t2, t3, t4, inv1])
     await session.flush()
 
     # Payments attempts

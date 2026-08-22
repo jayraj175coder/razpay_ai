@@ -118,10 +118,11 @@ class RecoveryAgentGraph:
         }
 
     async def _node_load_customer_context(self, state: RecoveryAgentState) -> Dict[str, Any]:
-        """Node 2: Fetch Customer Context & History."""
+        """Node 2: Fetch Real Customer Context & History from database."""
+        from app.services.customer_context import CustomerContextService
         cust_id = state["case"]["customer_id"]
-        customer_data = await AgentTools.get_customer_history(self.session, cust_id)
-        return {"customer": customer_data or {}}
+        context_obj = await CustomerContextService.load_customer_context(self.session, cust_id)
+        return {"customer": context_obj.to_dict()}
 
     async def _node_diagnose(self, state: RecoveryAgentState) -> Dict[str, Any]:
         """Node 3: AI Root-Cause Reasoning."""
@@ -131,24 +132,29 @@ class RecoveryAgentGraph:
             "customer_name": state["customer"].get("name", "Customer"),
             "source_type": state["case"]["source_type"],
             "lifetime_value": state["customer"].get("lifetime_value", 0.0),
+            "successful_payments": state["customer"].get("successful_payments_count", 0),
+            "recent_failures": state["customer"].get("recent_failures", []),
         }
         prompt = (
             f"Diagnose failure for {context['customer_name']}. "
             f"Failure code: '{context['failure_code']}', Amount: INR {context['amount']:.2f}, "
-            f"LTV: INR {context['lifetime_value']:.2f}, Source: {context['source_type']}."
+            f"LTV: INR {context['lifetime_value']:.2f}, Successful payments: {context['successful_payments']}, Source: {context['source_type']}."
         )
         system_prompt = "You are an expert fintech risk diagnostician. Determine the root cause of payment failure."
         diagnosis = await llm_client.generate_structured(prompt, system_prompt, DiagnosisOutput, context)
         return {"diagnosis": diagnosis.model_dump()}
 
     async def _node_calculate_recovery_score(self, state: RecoveryAgentState) -> Dict[str, Any]:
-        """Node 4: Deterministic Risk & Recovery Probability Scoring."""
+        """Node 4: Deterministic Risk & Recovery Probability Scoring from Real Context."""
+        cust = state.get("customer") or {}
         risk_result = RevenueRiskEngine.assess_risk(
             amount=state["case"]["amount_at_risk"],
             failure_code=state["diagnosis"]["root_cause"],
-            customer_segment=state["customer"].get("segment", "RETAIL"),
-            lifetime_value=state["customer"].get("lifetime_value", 0.0),
-            past_successful_payments=5,
+            customer_segment=cust.get("segment", "RETAIL"),
+            lifetime_value=cust.get("lifetime_value", 0.0),
+            past_successful_payments=cust.get("successful_payments_count", 0),
+            failed_attempts_count=cust.get("failed_payments_count", 0),
+            has_promise_to_pay=cust.get("has_active_promise", False),
         )
         return {"risk_score": risk_result.to_dict()}
 
@@ -161,6 +167,7 @@ class RecoveryAgentGraph:
             "source_type": state["case"]["source_type"],
             "recovery_prob": state["risk_score"]["recovery_probability"],
             "priority": state["risk_score"]["priority_score"],
+            "successful_payments": state["customer"].get("successful_payments_count", 0),
         }
         prompt = (
             f"Select recovery strategy for customer {context['customer_name']}. "
@@ -172,15 +179,16 @@ class RecoveryAgentGraph:
         return {"strategy": strategy.model_dump()}
 
     async def _node_policy_check(self, state: RecoveryAgentState) -> Dict[str, Any]:
-        """Node 6: Deterministic Policy Engine Gate."""
+        """Node 6: Deterministic Policy Engine Gate with Real Historical Counts."""
+        cust = state.get("customer") or {}
         policy = await AgentTools.get_active_policy(self.session)
         policy_eval = PolicyEngine.evaluate(
             policy=policy,
             action_type=state["strategy"]["recommended_action"],
             amount_at_risk=state["case"]["amount_at_risk"],
             failure_code=state["diagnosis"]["root_cause"],
-            attempts_count=0,
-            messages_sent=0,
+            attempts_count=cust.get("previous_recovery_attempts_count", 0),
+            messages_sent=cust.get("recent_communications_count", 0),
             proposed_discount_pct=state["strategy"].get("proposed_discount_pct", 0.0),
         )
         return {"policy_evaluation": policy_eval.to_dict()}

@@ -216,6 +216,35 @@ export async function escalatePromise(promiseId: string): Promise<any> {
   return res.json();
 }
 
+export async function fetchPendingApprovals(): Promise<{ pending_approvals: any[]; count: number }> {
+  const res = await fetch(`${API_BASE}/approvals`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch pending approvals");
+  return res.json();
+}
+
+export async function submitApprovalDecision(
+  caseId: string,
+  decision: "APPROVE" | "REJECT" | "MODIFY",
+  operatorId: string = "operator_admin",
+  reason?: string,
+  modifiedAmount?: number,
+  modifiedAction?: string
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/approvals/${caseId}/decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      decision,
+      operator_id: operatorId,
+      reason,
+      modified_amount: modifiedAmount,
+      modified_action: modifiedAction,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to submit approval decision");
+  return res.json();
+}
+
 export async function runSimulation(count: number = 100, seed: number = 42): Promise<any> {
   const res = await fetch(`${API_BASE}/simulation/run`, {
     method: "POST",

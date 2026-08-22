@@ -16,8 +16,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1 import api_router
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, engine, AsyncSessionLocal
 from app.core.logging import get_logger, setup_logging
+from app.db.seed import seed_database
 
 setup_logging()
 logger = get_logger("recoverai.main")
@@ -29,10 +30,18 @@ async def lifespan(app: FastAPI):
     logger.info("Starting RecoverAI API backend...")
     logger.info(f"Environment: {settings.ENVIRONMENT} | LLM Provider: {settings.LLM_PROVIDER} | Payment: {settings.PAYMENT_PROVIDER}")
     
-    # Initialize database tables for local/dev fallback
+    # Initialize database schema
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database schema verified.")
+
+    # Auto-seed initial demo data if empty
+    try:
+        async with AsyncSessionLocal() as session:
+            await seed_database(session)
+        logger.info("Database demo seed checked & verified.")
+    except Exception as exc:
+        logger.warning(f"Seeding notice: {exc}")
 
     yield
 
@@ -51,10 +60,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware
+# Robust CORS Middleware supporting all Vercel production and preview domains
+origins = [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+    "https://razpay-ai-seven.vercel.app",
+]
+if isinstance(settings.CORS_ORIGINS, list):
+    for o in settings.CORS_ORIGINS:
+        if o not in origins and o != "*":
+            origins.append(o)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,43 +84,30 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def request_logging_middleware(request: Request, call_next):
-    """Inject X-Request-ID and log request timing."""
-    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    request.state.request_id = request_id
-    start_time = time.perf_counter()
-
-    try:
-        response = await call_next(request)
-        process_time = (time.perf_counter() - start_time) * 1000
-        response.headers["X-Request-ID"] = request_id
-        response.headers["X-Process-Time-Ms"] = f"{process_time:.2f}"
-        
-        # Don't log health spam in info
-        if "/health" not in request.url.path:
-            logger.info(f"[{request_id}] {request.method} {request.url.path} -> {response.status_code} ({process_time:.2f}ms)")
-        return response
-    except Exception as exc:
-        process_time = (time.perf_counter() - start_time) * 1000
-        logger.error(f"[{request_id}] Unhandled error for {request.method} {request.url.path}: {exc}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal Server Error", "request_id": request_id},
-            headers={"X-Request-ID": request_id},
-        )
+async def add_process_time_header(request: Request, call_next):
+    """Add request timing and correlation ID to response headers."""
+    start_time = time.time()
+    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time-Sec"] = f"{process_time:.4f}"
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
 
 
-# Include API v1 routes
+# Register API v1 Routers
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
-@app.get("/")
-async def root():
-    """Root metadata endpoint."""
+@app.get("/", tags=["Health"])
+async def root_redirect():
+    """Root redirect with service metadata."""
     return {
         "name": settings.APP_NAME,
         "tagline": "Detect revenue leakage. Decide the safest intervention. Recover the money. Prove the outcome.",
+        "service": "RecoverAI Revenue Recovery Engine",
         "version": "1.0.0",
-        "docs": "/docs",
+        "status": "operational",
+        "docs_url": "/docs",
         "api_v1": settings.API_V1_STR,
     }

@@ -1,4 +1,4 @@
-"""Unit tests for Payment Gateway Providers."""
+"""Unit tests for Payment Gateway Providers and Verification."""
 import pytest
 from app.providers.factory import get_payment_provider
 from app.providers.mock_provider import MockPaymentProvider
@@ -22,6 +22,11 @@ async def test_mock_payment_retry_success():
     assert result.provider_reference.startswith("pay_mock_")
     assert result.settled_at is not None
 
+    # Verify status lookup
+    v_status = await provider.verify_payment(result.provider_reference)
+    assert v_status.is_verified_captured is True
+    assert v_status.status == "captured"
+
 
 @pytest.mark.asyncio
 async def test_mock_payment_retry_failure():
@@ -37,6 +42,22 @@ async def test_mock_payment_retry_failure():
     assert result.failure_code is not None
     assert result.failure_message is not None
     assert result.is_sandbox is True
+
+    # Verify status lookup
+    v_status = await provider.verify_payment(result.provider_reference)
+    assert v_status.is_verified_captured is False
+    assert v_status.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_mock_payment_deterministic_overrides():
+    """Test deterministic test fixture overrides."""
+    provider = MockPaymentProvider()
+    res1 = await provider.retry_payment(transaction_id="PAY-001", amount=5000.0)
+    assert res1.success is True
+
+    res2 = await provider.retry_payment(transaction_id="PAY-002", amount=5000.0)
+    assert res2.success is False
 
 
 @pytest.mark.asyncio
@@ -57,12 +78,11 @@ async def test_mock_payment_link_generation():
 
 
 @pytest.mark.asyncio
-async def test_mock_get_payment_status():
-    """Test payment status retrieval."""
-    provider = MockPaymentProvider()
-    status = await provider.get_payment_status("pay_mock_12345")
-    assert status.status == "captured"
-    assert status.is_sandbox is True
+async def test_razorpay_provider_unconfigured_error():
+    """Test RazorpayProvider raises explicit error when credentials unconfigured."""
+    provider = RazorpayProvider(key_id="rzp_test_placeholder", key_secret="placeholder")
+    with pytest.raises(RuntimeError, match="credentials are not configured"):
+        await provider.retry_payment(transaction_id="txn_test", amount=1000.0)
 
 
 def test_provider_factory():
@@ -70,5 +90,6 @@ def test_provider_factory():
     mock_p = get_payment_provider("mock")
     assert isinstance(mock_p, MockPaymentProvider)
 
-    rzp_p = get_payment_provider("razorpay")
-    assert isinstance(rzp_p, RazorpayProvider)
+    # When placeholder in config, factory cleanly falls back to Mock sandbox
+    default_p = get_payment_provider()
+    assert isinstance(default_p, MockPaymentProvider)

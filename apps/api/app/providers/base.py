@@ -34,11 +34,13 @@ class PaymentLinkResult:
 @dataclass
 class PaymentStatusResult:
     provider_reference: str
-    status: str  # "captured", "failed", "authorized", "refunded"
+    status: str  # "captured", "failed", "pending", "authorized", "refunded", "unknown"
     amount: float
     currency: str
+    is_verified_captured: bool = False
     paid_at: Optional[datetime] = None
     error_code: Optional[str] = None
+    error_description: Optional[str] = None
     is_sandbox: bool = True
     raw_response: Dict[str, Any] = field(default_factory=dict)
 
@@ -75,4 +77,9 @@ class PaymentProvider(ABC):
     @abstractmethod
     async def get_payment_status(self, provider_reference: str) -> PaymentStatusResult:
         """Fetch real-time settlement status of a payment."""
+        pass
+
+    @abstractmethod
+    async def verify_payment(self, provider_reference: str) -> PaymentStatusResult:
+        """Verify payment capture and settlement against provider ledger."""
         pass

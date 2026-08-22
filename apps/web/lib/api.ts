@@ -245,6 +245,28 @@ export async function submitApprovalDecision(
   return res.json();
 }
 
+export async function fetchActivePolicy(): Promise<any> {
+  const res = await fetch(`${API_BASE}/policies/active`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch active policy");
+  return res.json();
+}
+
+export async function fetchPolicies(): Promise<{ policies: any[]; count: number }> {
+  const res = await fetch(`${API_BASE}/policies`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch policies");
+  return res.json();
+}
+
+export async function createPolicyVersion(payload: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/policies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Failed to create policy version");
+  return res.json();
+}
+
 export async function runSimulation(count: number = 100, seed: number = 42): Promise<any> {
   const res = await fetch(`${API_BASE}/simulation/run`, {
     method: "POST",

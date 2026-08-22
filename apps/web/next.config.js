@@ -4,4 +4,4 @@ const nextConfig = {
   poweredByHeader: false,
 };
 
-export default nextConfig;
+module.exports = nextConfig;

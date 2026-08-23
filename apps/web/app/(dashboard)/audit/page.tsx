@@ -149,10 +149,25 @@ export default function AuditTrailPage() {
                       <p>{log.reason}</p>
                     </div>
 
-                    {isExpanded && log.metadata && (
-                      <div className="mt-3 ml-7 rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] text-emerald-400 overflow-x-auto">
-                        <span className="text-slate-400 text-[10px] uppercase block mb-1">Payload Metadata Diff:</span>
-                        <pre>{JSON.stringify(log.metadata, null, 2)}</pre>
+                    {isExpanded && (
+                      <div className="mt-3 ml-7 space-y-2">
+                        {log.entry_hash && (
+                          <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2.5 font-mono text-[11px] text-emerald-300">
+                            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block mb-1 flex items-center gap-1.5">
+                              <Shield className="h-3 w-3" /> Cryptographic SHA-256 Hash Chain
+                            </span>
+                            <div className="flex flex-col gap-1 text-[10px]">
+                              <div><span className="text-slate-400">Entry Hash: </span><span className="text-emerald-400 break-all">{log.entry_hash}</span></div>
+                              {log.prev_hash && <div><span className="text-slate-400">Prev Hash: </span><span className="text-slate-400 break-all">{log.prev_hash}</span></div>}
+                            </div>
+                          </div>
+                        )}
+                        {log.metadata && (
+                          <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] text-slate-300 overflow-x-auto">
+                            <span className="text-slate-400 text-[10px] uppercase block mb-1">Payload Metadata Diff:</span>
+                            <pre className="text-emerald-400">{JSON.stringify(log.metadata, null, 2)}</pre>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

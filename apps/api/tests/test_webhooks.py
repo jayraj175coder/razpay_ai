@@ -102,3 +102,53 @@ async def test_checkout_abandoned_webhook(client: AsyncClient):
     data = response.json()
     assert data["success"] is True
     assert data["data"]["source_type"] == "CHECKOUT_ABANDONMENT"
+
+
+@pytest.mark.asyncio
+async def test_razorpay_signed_webhook_endpoint(client: AsyncClient):
+    """Test Razorpay webhook endpoint with valid HMAC-SHA256 signature."""
+    import hashlib
+    import hmac
+    import json
+    from app.core.config import settings
+
+    payload_dict = {
+        "id": "evt_sig_test_777",
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_sig_test_777",
+                    "amount": 1850000,
+                    "currency": "INR",
+                    "error_code": "network_timeout",
+                    "error_description": "Network timeout during debit",
+                    "email": "rohan@nexus.in",
+                }
+            }
+        },
+        "customer": {
+            "name": "Rohan Gupta",
+            "email": "rohan@nexus.in",
+            "segment": "ENTERPRISE",
+        },
+    }
+
+    raw_bytes = json.dumps(payload_dict).encode("utf-8")
+    secret = settings.RAZORPAY_WEBHOOK_SECRET
+    sig = hmac.new(secret.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
+
+    response = await client.post(
+        "/api/v1/webhooks/razorpay",
+        content=raw_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": sig,
+            "X-Razorpay-Event-Id": "evt_sig_test_777",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["event_id"] == "evt_sig_test_777"
+

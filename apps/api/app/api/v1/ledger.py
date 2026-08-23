@@ -47,6 +47,8 @@ async def get_audit_trail(
                 "action": log.action,
                 "reason": log.reason,
                 "metadata": log.metadata_json,
+                "prev_hash": log.prev_hash,
+                "entry_hash": log.entry_hash,
                 "created_at": log.created_at.isoformat(),
             }
             for log in logs

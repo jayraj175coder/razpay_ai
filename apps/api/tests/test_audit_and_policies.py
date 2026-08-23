@@ -68,3 +68,4 @@ async def test_audit_logs_query_api(client: AsyncClient, db_session: AsyncSessio
     data = res.json()
     assert data["count"] >= 3
     assert all("action" in log and "actor_type" in log for log in data["audit_logs"])
+    assert all(log.get("entry_hash") is not None and len(log["entry_hash"]) == 64 for log in data["audit_logs"])

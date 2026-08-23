@@ -1,5 +1,6 @@
-"""Razorpay Gateway Adapter for Live and Test mode (Zero fake success)."""
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 from typing import Any, Dict, Optional
 import httpx
 
@@ -170,3 +171,29 @@ class RazorpayProvider(PaymentProvider):
     async def verify_payment(self, provider_reference: str) -> PaymentStatusResult:
         """Verify payment capture and settlement against Razorpay API."""
         return await self.get_payment_status(provider_reference)
+
+    @classmethod
+    def verify_webhook_signature(
+        cls,
+        raw_payload: bytes,
+        signature: str,
+        secret: Optional[str] = None,
+    ) -> bool:
+        """
+        Verify incoming Razorpay webhook signature using HMAC-SHA256.
+        Returns True if signature matches, False otherwise.
+        """
+        webhook_secret = secret or settings.RAZORPAY_WEBHOOK_SECRET
+        if not webhook_secret or not signature:
+            return False
+        try:
+            expected_sig = hmac.new(
+                webhook_secret.encode("utf-8"),
+                raw_payload,
+                hashlib.sha256,
+            ).hexdigest()
+            return hmac.compare_digest(expected_sig, signature.strip())
+        except Exception as exc:
+            logger.error(f"Error verifying Razorpay webhook signature: {exc}")
+            return False
+

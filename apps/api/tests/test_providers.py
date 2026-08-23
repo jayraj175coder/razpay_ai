@@ -93,3 +93,28 @@ def test_provider_factory():
     # When placeholder in config, factory cleanly falls back to Mock sandbox
     default_p = get_payment_provider()
     assert isinstance(default_p, MockPaymentProvider)
+
+
+def test_razorpay_webhook_signature_verification():
+    """Test HMAC-SHA256 signature verification with known test payload."""
+    import hashlib
+    import hmac
+
+    secret = "rzp_whsec_test_secret_12345"
+    payload = b'{"event":"payment.failed","id":"evt_123","amount":25000}'
+    
+    # Correct signature
+    expected_sig = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    assert RazorpayProvider.verify_webhook_signature(payload, expected_sig, secret) is True
+
+    # Tampered payload
+    tampered = b'{"event":"payment.failed","id":"evt_123","amount":99999}'
+    assert RazorpayProvider.verify_webhook_signature(tampered, expected_sig, secret) is False
+
+    # Wrong secret
+    assert RazorpayProvider.verify_webhook_signature(payload, expected_sig, "wrong_secret") is False
+
+    # Empty inputs
+    assert RazorpayProvider.verify_webhook_signature(payload, "", secret) is False
+    assert RazorpayProvider.verify_webhook_signature(payload, expected_sig, "") is False
+

@@ -36,7 +36,7 @@ async def test_simulation_api_endpoint(client: AsyncClient):
     """Test POST /api/v1/simulation/run endpoint."""
     response = await client.post(
         "/api/v1/simulation/run",
-        json={"count": 50, "seed": 101},
+        json={"count": 50, "seed": 101, "mandate_ratio": 0.4},
     )
     assert response.status_code == 200
     data = response.json()
@@ -44,3 +44,11 @@ async def test_simulation_api_endpoint(client: AsyncClient):
     assert data["seed"] == 101
     assert "incremental_recovered_revenue" in data
     assert "breakdown_by_category" in data
+
+
+def test_synthetic_generator_mandate_ratio():
+    """Test generating batch with explicit mandate_ratio."""
+    batch = SyntheticTransactionGenerator.generate_batch(count=100, seed=42, mandate_ratio=0.5)
+    mandate_txns = [t for t in batch if t.source_type == "MANDATE_FAILURE"]
+    assert len(mandate_txns) > 20
+    assert any(t.failure_code in ["npci_downtime", "bank_server_error", "low_balance_recurring"] for t in mandate_txns)

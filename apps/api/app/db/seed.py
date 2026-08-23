@@ -56,6 +56,8 @@ async def seed_database(session: AsyncSession) -> None:
         human_approval_threshold=100000.0,  # ₹1,00,000 threshold
         retry_delay_hours=24,
         escalation_delay_hours=72,
+        mandate_retry_window_hours=24,
+        max_mandate_attempts_per_cycle=3,
         rules_json={
             "disallowed_failure_codes": ["fraud_suspected", "stolen_card", "account_frozen"],
             "high_value_escalate_threshold": 100000.0,

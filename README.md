@@ -37,16 +37,18 @@ In subscription, e-commerce, and B2B workflows, **failed payments, cart abandonm
 flowchart TD
     WH["Webhook Ingestion Pipe\n(SHA-256 Deduplication)"] --> RE["Revenue Risk Engine\n(Probability & Priority Scoring)"]
     RE --> LG["LangGraph 10-Node Workflow\n(Root Cause Diagnosis & Strategy)"]
-    LG --> PE{"Bounded Policy Gate\n(Deterministic Rules)"}
+    LG --> PE{"Bounded Policy Gate\n(Deterministic Rules & Mandate Sequencer)"}
     
     PE -- "Allowed & Safe" --> GW["Payment Provider\n(Smart Retry / WhatsApp Link)"]
+    PE -- "Mandate Expired / Revoked" --> REN["Mandate Renewal Flow\n(State: AWAITING_MANDATE_RENEWAL)"]
     PE -- ">= ₹1,00,000 / Risk" --> HITL["Human Approval Queue\n(/approvals)"]
     PE -- "Fraud Risk Detected" --> STOP["State: STOPPED\n(Zero Unauthorized Retries)"]
     
     HITL -- "Approved" --> GW
     HITL -- "Rejected" --> STOP
     
-    GW --> REC["Verified Ledger & Audit Log\n(/dashboard & /audit)"]
+    REN --> REC["Verified Ledger & Audit Log\n(/dashboard & /audit)"]
+    GW --> REC
 ```
 
 ---
@@ -60,24 +62,45 @@ flowchart TD
 - `load_case` → `load_customer_context` → `diagnose` (LLM root cause) → `calculate_recovery_score` → `select_strategy` (channel & timing) → `policy_check` (firewall) → `execute_or_escalate` → `verify_result` → `update_recovery_ledger` → `write_audit_log`.
 
 ### 3. Finite State Machine & Stopping Rules
-- Full lifecycle governance: `DETECTED` → `DIAGNOSED` → `POLICY_CHECK` → `APPROVED` → `EXECUTING` → `AWAITING_RESULT` → `RECOVERED` / `STOPPED` / `ESCALATED`.
+- Full lifecycle governance: `DETECTED` → `DIAGNOSED` → `POLICY_CHECK` → `APPROVED` → `EXECUTING` → `AWAITING_RESULT` → `RECOVERED` / `STOPPED` / `ESCALATED` / `AWAITING_MANDATE_RENEWAL`.
 - Strict stopping rules on `MAX_RETRIES_EXCEEDED` (3), `MAX_MESSAGES_EXCEEDED` (2/week), `FRAUD_RISK_DETECTED`, or customer opt-out.
 
-### 4. Side-by-Side Simulation Benchmark Engine (`/simulation`)
+### 4. Mandate Retry Sequencer (UPI AutoPay & NACH)
+- Specialized recurring lifecycle handler for UPI & NACH mandate failures, distinct from one-off card retries.
+- Enforces **NPCI cycle alignment**, mandatory cooldown retry windows (`mandate_retry_window_hours`), and separate per-cycle retry caps (`max_mandate_attempts_per_cycle`).
+- Automatically blocks futile retries on `mandate_expired` and `mandate_revoked`, routing customers to `REQUEST_MANDATE_RENEWAL` in `AWAITING_MANDATE_RENEWAL` state for 1-click re-authorization.
+
+### 5. Side-by-Side Simulation Benchmark Engine (`/simulation`)
 - Deterministic synthetic transaction batches (100, 500, 1000 transactions with configurable random seed).
 - Compares **Baseline Dumb Retries** vs **RecoverAI Agent**:
   - **Baseline Recovery Rate**: `20.4%` (blind retries fail on expired cards, dropoffs, and invoices).
   - **RecoverAI Recovery Rate**: `77.8%` (**+57.4% incremental lift** and **+₹16.32 Lakhs** additional revenue per 100 cases).
 
-### 5. Natural Language Promise-to-Pay Tracker (`/promises`)
+### 6. Natural Language Promise-to-Pay Tracker (`/promises`)
 - Extracts numerical amounts, target dates, and confidence scores from unstructured customer emails and WhatsApp responses (e.g. *"Will clear the pending 85000 invoice by Friday"*).
 - Automated tracking: `PROMISED` → `WAITING` → `FULFILLED` / `BROKEN` → `ESCALATED`.
 
-### 6. Human-in-the-Loop Approvals (`/approvals`)
+### 7. Human-in-the-Loop Approvals (`/approvals`)
 - High-value transactions (>= ₹1,00,000), sensitive dunning actions, and broken promises require explicit operator sign-off before gateway dispatch.
 
-### 7. Immutable Audit Trail (`/audit`)
+### 8. Hinglish AI Voice Recovery (`/voice`)
+- Generates natural, empathetic **spoken Hinglish** (Hindi + English code-mixed) recovery scripts tailored to Indian consumer & enterprise contexts.
+- Automated outbound calling simulator that delivers conversational voice reminders, generates 1-click Razorpay payment links during calls, and automatically parses spoken customer commitments into tracked **Promise-to-Pay** records.
+
+### 9. Immutable Audit Trail (`/audit`)
 - Every transition, policy decision, AI prompt metadata diff, and human operator action is cryptographically tracked in an immutable audit ledger.
+
+---
+
+## 🎯 7 Core Production Recovery Workflows
+
+1. **Payment Degradation → Root Cause → Bounded Action**: Real-time webhook ingestion parses gateway error codes (`network_timeout`, `bank_server_error`, `insufficient_funds`), scores recovery probability (0–100%), and proposes safe execution routes.
+2. **Checkout Drop-Off Recovery**: Non-intrusive 1-click cart restoration link with policy-bounded dynamic discount incentives (up to 15%).
+3. **Failed-Subscription Dunning**: Intelligent off-peak retry sequencing avoiding high-traffic switch windows, with WhatsApp payment link fallback on expired cards.
+4. **B2B Receivables Chaser**: Accounts receivable aging tracking, overdue corporate invoice penalty calculations, and mandatory human signoff for balances $\ge \text{₹}1,00,000$.
+5. **Mandate Retry Sequencer**: NPCI clearing cycle alignment, 24h cooldown windows, 3-attempt cycle caps, and instant `REQUEST_MANDATE_RENEWAL` routing for expired/revoked mandates.
+6. **Hinglish AI Voice Recovery**: Context-aware natural spoken Hindi/English code-mixed outbound voice recovery and real-time verbal promise capture.
+7. **Promise-to-Pay Tracker**: Unstructured NLP promise extraction from emails/WhatsApp/voice calls, tracking commitments (`PROMISED` $\rightarrow$ `WAITING` $\rightarrow$ `FULFILLED` / `BROKEN` $\rightarrow$ `ESCALATED`) with financial ledger reconciliation.
 
 ---
 
@@ -89,17 +112,17 @@ razpay_ai/
 │   ├── api/                     # FastAPI Async Backend (Python 3.11+)
 │   │   ├── app/
 │   │   │   ├── agents/          # LangGraph 10-Node Graph, LLM Client & Schemas
-│   │   │   ├── api/v1/          # Endpoints (Cases, Ledger, Approvals, Promises, Policies, Sim)
+│   │   │   ├── api/v1/          # Endpoints (Cases, Ledger, Approvals, Promises, Policies, Sim, Voice)
 │   │   │   ├── core/            # Config, Logging, Async Database Engine
 │   │   │   ├── db/              # Seeder with Indian fintech demo profiles
 │   │   │   ├── models/          # SQLAlchemy 2.0 Domain Models
 │   │   │   ├── policies/        # Bounded Policy Engine
 │   │   │   ├── providers/       # Razorpay & Mock Payment Gateways
 │   │   │   ├── risk/            # Revenue Risk & Priority Scoring Engine
-│   │   │   ├── services/        # LedgerService, PromiseService, ApprovalService
+│   │   │   ├── services/        # LedgerService, PromiseService, ApprovalService, VoiceRecoveryService
 │   │   │   ├── state_machine/   # Finite State Machine & Stopping Rules
 │   │   │   └── webhooks/        # SHA-256 Deduplicated Webhook Processor
-│   │   └── tests/               # 54 Pytest Unit, Integration & E2E Scenario Tests
+│   │   └── tests/               # 70 Pytest Unit, Integration & E2E Scenario Tests
 │   └── web/                     # Next.js 14 App Router Frontend (Tailwind + Recharts)
 │       ├── app/                 # /dashboard, /recovery, /simulation, /promises, /approvals, /policies, /audit
 │       ├── components/          # Reusable UI, Charts, Tables, Navigation & Modals
@@ -160,27 +183,31 @@ docker-compose up --build
 
 ## 🧪 Comprehensive Test Suite
 
-Run the full backend test suite covering unit tests, state machine transitions, policy firewalls, and end-to-end failure scenarios:
+Run the full backend test suite covering unit tests, state machine transitions, policy firewalls, voice recovery, and end-to-end failure scenarios:
 
 ```bash
 pytest apps/api/tests -v
 ```
 
 ```text
-============================= 54 passed in 6.40s ==============================
-apps/api/tests/test_agent.py ...                                         [  5%]
-apps/api/tests/test_approvals.py ...                                     [ 11%]
-apps/api/tests/test_audit_and_policies.py ...                            [ 16%]
-apps/api/tests/test_e2e_recovery_scenarios.py .....                      [ 25%]
-apps/api/tests/test_health.py ..                                         [ 29%]
-apps/api/tests/test_ledger.py ....                                       [ 37%]
-apps/api/tests/test_models.py ....                                       [ 44%]
-apps/api/tests/test_policy_engine.py ......                              [ 55%]
-apps/api/tests/test_promises.py ...                                      [ 61%]
-apps/api/tests/test_providers.py .....                                   [ 70%]
-apps/api/tests/test_risk_engine.py .....                                 [ 79%]
-apps/api/tests/test_simulation.py ...                                    [ 85%]
-apps/api/tests/test_state_machine.py .....                               [ 94%]
+============================= 70 passed in 8.48s ==============================
+apps/api/tests/test_agent.py ...                                         [  4%]
+apps/api/tests/test_approvals.py ...                                     [  8%]
+apps/api/tests/test_audit_and_policies.py ...                            [ 12%]
+apps/api/tests/test_customer_context.py ..                               [ 15%]
+apps/api/tests/test_e2e_recovery_scenarios.py .....                      [ 22%]
+apps/api/tests/test_golden_recovery_case.py .                            [ 24%]
+apps/api/tests/test_health.py ..                                         [ 27%]
+apps/api/tests/test_ledger.py ....                                       [ 32%]
+apps/api/tests/test_models.py ....                                       [ 38%]
+apps/api/tests/test_payment_verification.py ..                           [ 41%]
+apps/api/tests/test_policy_engine.py ..........                          [ 55%]
+apps/api/tests/test_promises.py ...                                      [ 60%]
+apps/api/tests/test_providers.py ......                                  [ 68%]
+apps/api/tests/test_risk_engine.py ......                                [ 77%]
+apps/api/tests/test_simulation.py ....                                   [ 82%]
+apps/api/tests/test_state_machine.py ......                              [ 91%]
+apps/api/tests/test_voice_recovery.py ...                                [ 95%]
 apps/api/tests/test_webhooks.py ...                                      [100%]
 ```
 
@@ -206,6 +233,8 @@ apps/api/tests/test_webhooks.py ...                                      [100%]
 | `POST` | `/api/v1/approvals/{id}/decision` | Submit operator approval/rejection decision |
 | `GET` | `/api/v1/policies/active` | Get active bounded recovery policy |
 | `POST` | `/api/v1/policies` | Publish new versioned recovery policy |
+| `POST` | `/api/v1/voice/generate-script` | Generate personalized Hinglish voice recovery script |
+| `POST` | `/api/v1/voice/call` | Simulate automated Hinglish voice call & extract promise |
 
 ---
 

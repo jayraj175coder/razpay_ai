@@ -148,3 +148,43 @@ def test_stopping_rules(sample_case, default_policy):
     )
     assert stop is False
     assert rule is None
+
+
+def test_awaiting_mandate_renewal_transitions(sample_case):
+    """Test transitions into and out of AWAITING_MANDATE_RENEWAL."""
+    # From POLICY_CHECK -> AWAITING_MANDATE_RENEWAL
+    sample_case.status = RecoveryState.POLICY_CHECK
+    RecoveryStateMachine.transition(
+        sample_case,
+        RecoveryState.AWAITING_MANDATE_RENEWAL,
+        actor_type=ActorType.POLICY_ENGINE,
+        reason="Mandate expired; waiting for customer e-mandate re-authorization",
+    )
+    assert sample_case.status == RecoveryState.AWAITING_MANDATE_RENEWAL
+
+    # AWAITING_MANDATE_RENEWAL -> RECOVERED
+    sample_case.recovered_amount = sample_case.amount_at_risk
+    RecoveryStateMachine.transition(
+        sample_case,
+        RecoveryState.RECOVERED,
+        actor_type=ActorType.RECOVERY_EXECUTOR,
+        reason="Customer completed mandate renewal and payment was collected",
+    )
+    assert sample_case.status == RecoveryState.RECOVERED
+
+    # From ACTION_PROPOSED -> AWAITING_MANDATE_RENEWAL -> STOPPED
+    sample_case.status = RecoveryState.ACTION_PROPOSED
+    RecoveryStateMachine.transition(
+        sample_case,
+        RecoveryState.AWAITING_MANDATE_RENEWAL,
+        actor_type=ActorType.AI_AGENT,
+    )
+    assert sample_case.status == RecoveryState.AWAITING_MANDATE_RENEWAL
+
+    RecoveryStateMachine.transition(
+        sample_case,
+        RecoveryState.STOPPED,
+        actor_type=ActorType.SYSTEM,
+        reason="Renewal window timed out",
+    )
+    assert sample_case.status == RecoveryState.STOPPED

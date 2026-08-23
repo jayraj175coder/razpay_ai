@@ -29,3 +29,14 @@ class PromiseExtractionOutput(BaseModel):
     promised_date: Optional[str] = Field(None, description="Extracted promise date in ISO format YYYY-MM-DD")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Extraction confidence score")
     notes: Optional[str] = Field(None, description="Key condition or note mentioned by customer")
+
+
+class VoiceScriptOutput(BaseModel):
+    """Structured Hinglish/English conversational voice recovery script."""
+    script_text_hinglish: str = Field(..., description="Natural spoken Hinglish script for automated outbound recovery call")
+    script_text_english: str = Field(..., description="English equivalent transcript for financial audit and compliance")
+    call_intent: str = Field(..., description="Intent classification: PAYMENT_REMINDER, MANDATE_RENEWAL, CHECKOUT_RESTORATION, INVOICE_CLEARANCE")
+    voice_tone: str = Field(default="POLITE_PROFESSIONAL", description="Tone of voice: POLITE_PROFESSIONAL, URGENT_COURTEOUS, ENTERPRISE_EXECUTIVE")
+    suggested_followup_action: RecoveryActionType = Field(default=RecoveryActionType.CREATE_PAYMENT_LINK, description="Automated follow-up action to dispatch after call")
+    dispatch_payment_link: bool = Field(default=True, description="Whether to trigger 1-click Razorpay payment link via SMS/WhatsApp during call")
+    estimated_duration_seconds: int = Field(default=35, description="Estimated duration of voice script in seconds")

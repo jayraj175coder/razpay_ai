@@ -8,6 +8,7 @@ from app.api.v1.simulation import router as simulation_router
 from app.api.v1.promises import router as promises_router
 from app.api.v1.approvals import router as approvals_router
 from app.api.v1.policies import router as policies_router
+from app.api.v1.voice import router as voice_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, prefix="/health", tags=["Health"])
@@ -18,3 +19,4 @@ api_router.include_router(simulation_router, prefix="/simulation", tags=["Simula
 api_router.include_router(promises_router, prefix="/promises", tags=["Promises"])
 api_router.include_router(approvals_router, prefix="/approvals", tags=["Approvals"])
 api_router.include_router(policies_router, prefix="/policies", tags=["Policies"])
+api_router.include_router(voice_router, prefix="/voice", tags=["Voice Recovery"])

@@ -42,12 +42,14 @@ VALID_TRANSITIONS: Dict[RecoveryState, Set[RecoveryState]] = {
     },
     RecoveryState.ACTION_PROPOSED: {
         RecoveryState.POLICY_CHECK,
+        RecoveryState.AWAITING_MANDATE_RENEWAL,
         RecoveryState.ESCALATED,
         RecoveryState.STOPPED,
     },
     RecoveryState.POLICY_CHECK: {
         RecoveryState.APPROVED,
         RecoveryState.REJECTED,
+        RecoveryState.AWAITING_MANDATE_RENEWAL,
         RecoveryState.ESCALATED,
         RecoveryState.STOPPED,
     },
@@ -89,6 +91,10 @@ VALID_TRANSITIONS: Dict[RecoveryState, Set[RecoveryState]] = {
     RecoveryState.FAILED: {
         RecoveryState.RETRY_SCHEDULED,
         RecoveryState.ESCALATED,
+        RecoveryState.STOPPED,
+    },
+    RecoveryState.AWAITING_MANDATE_RENEWAL: {
+        RecoveryState.RECOVERED,
         RecoveryState.STOPPED,
     },
     # Terminal states

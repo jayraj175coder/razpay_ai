@@ -28,17 +28,36 @@ class RiskAssessmentResult:
 
 # Base baseline probabilities by failure taxonomy
 FAILURE_CODE_BASE_PROBABILITY: Dict[str, float] = {
+    # Infrastructure & Network (0.85+)
+    # NPCI central switch downtime during recurring cycle — pure infra failure, highly recoverable once switch stabilizes
+    "npci_downtime": 0.90,
     "network_timeout": 0.88,
     "gateway_error": 0.86,
     "system_busy": 0.85,
+    # Issuing bank core banking system downtime — bank-side outage, highly recoverable after cooldown
+    "bank_server_error": 0.82,
+
+    # Authentication & User Flow (0.70 - 0.80)
     "auth_failed": 0.78,
     "otp_timeout": 0.76,
     "checkout_abandoned": 0.72,
+
+    # Behavioral & Liquidity (0.50 - 0.70)
     "insufficient_funds": 0.68,
+    # Scheduled mandate execution hit low balance — recoverable when resequenced after payroll / balance credit
+    "low_balance_recurring": 0.60,
     "card_expired": 0.58,
+    # Amount exceeds pre-authorized mandate limit — recoverable if amount is adjusted or split
+    "mandate_amount_exceeded": 0.55,
     "mandate_inactive": 0.50,
+
+    # Permanent & Blocked (< 0.20)
     "invalid_card": 0.18,
+    # Mandate validity period lapsed — auto-retries will fail; requires explicit customer renewal / re-authorization
+    "mandate_expired": 0.15,
     "account_closed": 0.10,
+    # Customer cancelled standing instruction with issuer bank — permanently unrecoverable via retry, do not retry
+    "mandate_revoked": 0.05,
     "fraud_suspected": 0.05,
     "stolen_card": 0.03,
 }

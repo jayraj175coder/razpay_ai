@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.agents.schemas import DiagnosisOutput, StrategyOutput, PromiseExtractionOutput
+from app.agents.schemas import DiagnosisOutput, StrategyOutput, PromiseExtractionOutput, VoiceScriptOutput
 from app.models.enums import RecoveryActionType, RiskCategory
 
 logger = get_logger("recoverai.agents.llm")
@@ -84,7 +84,42 @@ class LLMClient:
         ltv = float(context.get("lifetime_value", 0.0))
 
         if schema == DiagnosisOutput:
-            if "timeout" in failure_code or "network" in failure_code:
+            if "npci" in failure_code or "bank_server" in failure_code:
+                return DiagnosisOutput(
+                    root_cause=failure_code if failure_code in ["npci_downtime", "bank_server_error"] else "npci_downtime",
+                    explanation=f"Infrastructure outage at NPCI / issuing bank switch for {customer_name}. Transient network error.",
+                    confidence=0.95,
+                    risk_category=RiskCategory.LOW if amount < 25000 else RiskCategory.MEDIUM,
+                )
+            elif "mandate_revoked" in failure_code:
+                return DiagnosisOutput(
+                    root_cause="mandate_revoked",
+                    explanation=f"Customer {customer_name} revoked the recurring mandate at issuing bank. Automated retries prohibited; renewal required.",
+                    confidence=0.97,
+                    risk_category=RiskCategory.CRITICAL,
+                )
+            elif "mandate_expired" in failure_code:
+                return DiagnosisOutput(
+                    root_cause="mandate_expired",
+                    explanation=f"Mandate validity period expired for {customer_name}. Requires fresh e-mandate authorization.",
+                    confidence=0.94,
+                    risk_category=RiskCategory.HIGH,
+                )
+            elif "low_balance_recurring" in failure_code:
+                return DiagnosisOutput(
+                    root_cause="low_balance_recurring",
+                    explanation=f"Recurring mandate scheduled execution failed due to temporary low balance. Eligible for post-payroll resequencing.",
+                    confidence=0.90,
+                    risk_category=RiskCategory.MEDIUM,
+                )
+            elif "mandate_amount_exceeded" in failure_code:
+                return DiagnosisOutput(
+                    root_cause="mandate_amount_exceeded",
+                    explanation=f"Debit amount ₹{amount:,.0f} exceeds max authorized mandate cap for {customer_name}.",
+                    confidence=0.92,
+                    risk_category=RiskCategory.MEDIUM,
+                )
+            elif "timeout" in failure_code or "network" in failure_code:
                 return DiagnosisOutput(
                     root_cause="transient_gateway_timeout",
                     explanation=f"Transaction failed due to interbank network timeout. Customer {customer_name} has strong historical liquidity.",
@@ -136,6 +171,22 @@ class LLMClient:
                     customer_message=f"Hi {customer_name}, we noticed an issue settling your recent invoice of ₹{amount:,.0f}. Our account specialist will contact your team to assist with payment routing.",
                     retry_delay_hours=24,
                 )
+            elif failure_code in ["mandate_revoked", "mandate_expired"]:
+                return StrategyOutput(
+                    recommended_action=RecoveryActionType.REQUEST_MANDATE_RENEWAL,
+                    recommended_channel="WHATSAPP",
+                    reasoning=f"Mandate status is '{failure_code}'. Automated retry is prohibited; customer must re-authorize or renew e-mandate.",
+                    customer_message=f"Hello {customer_name}, your recurring payment mandate requires re-authorization. Please click below to renew your mandate securely.",
+                    retry_delay_hours=24,
+                )
+            elif failure_code in ["npci_downtime", "bank_server_error", "low_balance_recurring", "mandate_amount_exceeded"] or source_type == "MANDATE_FAILURE":
+                return StrategyOutput(
+                    recommended_action=RecoveryActionType.RESEQUENCE_MANDATE_RETRY,
+                    recommended_channel="SMART_RETRY",
+                    reasoning="Mandate failure eligible for NPCI cycle resequencing after cooling window.",
+                    customer_message=None,
+                    retry_delay_hours=24,
+                )
             elif "timeout" in failure_code or "network" in failure_code:
                 return StrategyOutput(
                     recommended_action=RecoveryActionType.RETRY_PAYMENT,
@@ -176,13 +227,47 @@ class LLMClient:
             amount_match = re.search(r"(?:rs\.?|inr|₹)?\s*(\d+[\d,]*\d*)", prompt_text)
             extracted_amt = float(amount_match.group(1).replace(",", "")) if amount_match else None
             
-            has_promise = any(w in prompt_text for w in ["will pay", "promise", "monday", "tomorrow", "wednesday", "friday", "by "])
+            has_promise = any(w in prompt_text for w in ["will pay", "promise", "monday", "tomorrow", "wednesday", "friday", "by ", "clear kar dunga", "pay kar dunga", "dunga"])
             return PromiseExtractionOutput(
                 has_promise=has_promise,
                 promised_amount=extracted_amt,
                 promised_date="2026-08-25",
                 confidence=0.95 if has_promise else 0.1,
                 notes="Extracted promise commitment from customer correspondence.",
+            )
+        elif schema == VoiceScriptOutput:
+            intent = str(context.get("intent", "")).upper()
+            if not intent:
+                if "mandate" in failure_code:
+                    intent = "MANDATE_RENEWAL"
+                elif "checkout" in failure_code or "abandoned" in source_type.lower():
+                    intent = "CHECKOUT_RESTORATION"
+                elif amount >= 100000.0:
+                    intent = "INVOICE_CLEARANCE"
+                else:
+                    intent = "PAYMENT_REMINDER"
+
+            if "mandate" in failure_code:
+                hinglish = f"Namaste {customer_name}! Hum RecoverAI payment desk se bol rahe hain. Aapka ₹{amount:,.0f} ka recurring mandate authorization expire ho gaya hai. Aapke WhatsApp pe humne 1-click renewal link share kiya hai, jisse aap 30 seconds mein mandate re-activate kar sakte hain. Thank you!"
+                english = f"Hello {customer_name}, calling from RecoverAI payment services. Your recurring mandate of INR {amount:,.0f} requires re-authorization. We have sent a 1-click renewal link to your registered WhatsApp. Thank you."
+            elif "checkout" in failure_code or "abandoned" in source_type.lower():
+                hinglish = f"Namaste {customer_name}! Aapne ₹{amount:,.0f} ke cart items checkout stage pe chhod diye the. Kya aap order complete karna chahte hain? Humne WhatsApp pe instant 1-click checkout payment link bhej diya hai."
+                english = f"Hello {customer_name}, we noticed incomplete checkout items worth INR {amount:,.0f}. A direct payment link has been delivered to your WhatsApp for instant completion."
+            elif amount >= 100000.0:
+                hinglish = f"Namaste {customer_name} ji! Main accounts support team se connect kar raha hoon. Aapke ₹{amount:,.0f} ke pending enterprise invoice ke settlement ke regarding baat karni thi. Kya hamara relationship manager aapko call par guide kar sakta hai?"
+                english = f"Good day {customer_name}, calling from Enterprise Accounts regarding the pending invoice of INR {amount:,.0f}. Our account specialist is available to facilitate settlement."
+            else:
+                hinglish = f"Namaste {customer_name}! Aapka ₹{amount:,.0f} ka recent payment temporary bank network issue ki wajah se decline ho gaya tha. Humne aapke registered WhatsApp pe Razorpay 1-click payment link bheja hai jisse aap turant UPI ya card se pay kar sakte hain."
+                english = f"Hello {customer_name}, your recent payment of INR {amount:,.0f} was unsuccessful due to a transient bank network issue. A secure 1-click payment link has been shared via WhatsApp."
+
+            return VoiceScriptOutput(
+                script_text_hinglish=hinglish,
+                script_text_english=english,
+                call_intent=intent,
+                voice_tone="ENTERPRISE_EXECUTIVE" if amount >= 100000 else "POLITE_PROFESSIONAL",
+                suggested_followup_action=RecoveryActionType.REQUEST_MANDATE_RENEWAL if "mandate" in failure_code else RecoveryActionType.CREATE_PAYMENT_LINK,
+                dispatch_payment_link=True,
+                estimated_duration_seconds=30,
             )
 
         raise ValueError(f"Unsupported schema: {schema}")

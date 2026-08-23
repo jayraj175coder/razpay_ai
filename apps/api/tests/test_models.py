@@ -146,6 +146,8 @@ async def test_database_seeding(db_session: AsyncSession):
     policies = res_policy.scalars().all()
     assert len(policies) >= 1
     assert policies[0].max_payment_retries == 3
+    assert policies[0].mandate_retry_window_hours == 24
+    assert policies[0].max_mandate_attempts_per_cycle == 3
 
     # Check cases
     stmt_cases = select(RecoveryCase)

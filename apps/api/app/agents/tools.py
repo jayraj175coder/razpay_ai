@@ -62,6 +62,10 @@ class AgentTools:
                 communication_window_hours=168,
                 max_discount_pct=5.0,
                 human_approval_threshold=100000.0,
+                retry_delay_hours=24,
+                escalation_delay_hours=72,
+                mandate_retry_window_hours=24,
+                max_mandate_attempts_per_cycle=3,
             )
             session.add(policy)
             await session.flush()

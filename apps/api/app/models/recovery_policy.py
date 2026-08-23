@@ -23,5 +23,9 @@ class RecoveryPolicy(Base):
     retry_delay_hours = Column(Integer, default=24, nullable=False)
     escalation_delay_hours = Column(Integer, default=72, nullable=False)
     
+    # Mandate-specific deterministic bounds (NPCI cycles)
+    mandate_retry_window_hours = Column(Integer, default=24, nullable=False)
+    max_mandate_attempts_per_cycle = Column(Integer, default=3, nullable=False)
+    
     rules_json = Column(JSON, nullable=True)  # Detailed custom rule overrides
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)

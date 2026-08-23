@@ -51,6 +51,8 @@ class PolicyEngine:
         attempts_count: int = 0,
         messages_sent: int = 0,
         proposed_discount_pct: float = 0.0,
+        hours_since_last_attempt: Optional[float] = None,
+        mandate_attempts_count: Optional[int] = None,
     ) -> PolicyEvaluationResult:
         violated_rules: List[str] = []
         code = (failure_code or "").lower().strip()
@@ -85,10 +87,58 @@ class PolicyEngine:
                     violated_rules=violated_rules,
                 )
 
-        # Rule 3: Communication Frequency Limit
+        # Rule 3: Mandate Retry Sequencing & NPCI Lifecycle Boundary
+        if action_type in [RecoveryActionType.RESEQUENCE_MANDATE_RETRY, RecoveryActionType.RETRY_PAYMENT]:
+            if code in ["mandate_revoked", "mandate_expired"]:
+                violated_rules.append(
+                    f"Mandate failure '{code}' cannot be auto-retried and requires mandate renewal ({RecoveryActionType.REQUEST_MANDATE_RENEWAL.value})"
+                )
+                return PolicyEvaluationResult(
+                    allowed=False,
+                    decision=PolicyDecision.BLOCKED,
+                    reason=f"Action blocked: Mandate failure '{code}' cannot be auto-retried. Must route to REQUEST_MANDATE_RENEWAL.",
+                    policy_version=policy.version,
+                    requires_human_approval=False,
+                    violated_rules=violated_rules,
+                )
+
+        if action_type == RecoveryActionType.RESEQUENCE_MANDATE_RETRY:
+            # Enforce mandate-specific retry cooldown window
+            mandate_window = getattr(policy, "mandate_retry_window_hours", 24)
+            if hours_since_last_attempt is not None and hours_since_last_attempt < mandate_window:
+                violated_rules.append(
+                    f"Mandate retry window not met: {hours_since_last_attempt:.1f}h elapsed < required {mandate_window}h window"
+                )
+                return PolicyEvaluationResult(
+                    allowed=False,
+                    decision=PolicyDecision.BLOCKED,
+                    reason=f"Action blocked: Mandate retry attempted within {mandate_window}-hour cooldown window ({hours_since_last_attempt:.1f}h elapsed).",
+                    policy_version=policy.version,
+                    requires_human_approval=False,
+                    violated_rules=violated_rules,
+                )
+
+            # Enforce separate max mandate attempts per cycle limit
+            m_attempts = mandate_attempts_count if mandate_attempts_count is not None else attempts_count
+            max_cycle_attempts = getattr(policy, "max_mandate_attempts_per_cycle", 3)
+            if m_attempts >= max_cycle_attempts:
+                violated_rules.append(
+                    f"Mandate cycle limit exceeded: {m_attempts} attempts made >= max allowed {max_cycle_attempts} per cycle"
+                )
+                return PolicyEvaluationResult(
+                    allowed=False,
+                    decision=PolicyDecision.BLOCKED,
+                    reason=f"Action blocked: Maximum mandate cycle attempts ({max_cycle_attempts}) reached.",
+                    policy_version=policy.version,
+                    requires_human_approval=False,
+                    violated_rules=violated_rules,
+                )
+
+        # Rule 4: Communication Frequency Limit
         if action_type in [
             RecoveryActionType.SEND_PAYMENT_REMINDER,
             RecoveryActionType.CREATE_PAYMENT_LINK,
+            RecoveryActionType.TRIGGER_HINGLISH_VOICE_CALL,
         ]:
             if messages_sent >= policy.max_messages:
                 violated_rules.append(
@@ -103,7 +153,7 @@ class PolicyEngine:
                     violated_rules=violated_rules,
                 )
 
-        # Rule 4: Discount Ceiling
+        # Rule 5: Discount Ceiling
         if action_type == RecoveryActionType.OFFER_DISCOUNT or proposed_discount_pct > 0:
             if proposed_discount_pct > policy.max_discount_pct:
                 violated_rules.append(
@@ -118,7 +168,7 @@ class PolicyEngine:
                     violated_rules=violated_rules,
                 )
 
-        # Rule 5: High Value Human Approval Threshold
+        # Rule 6: High Value Human Approval Threshold
         if amount_at_risk >= policy.human_approval_threshold:
             return PolicyEvaluationResult(
                 allowed=True,
@@ -132,7 +182,7 @@ class PolicyEngine:
                 violated_rules=[],
             )
 
-        # Rule 6: Unclassified / Unknown Failure Code
+        # Rule 7: Unclassified / Unknown Failure Code
         if not code or code in ["unknown", "generic_error"]:
             return PolicyEvaluationResult(
                 allowed=True,

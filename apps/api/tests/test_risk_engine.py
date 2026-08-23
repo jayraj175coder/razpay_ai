@@ -81,3 +81,69 @@ def test_promise_to_pay_boost():
     )
     assert res_with.recovery_probability > res_without.recovery_probability
     assert any("Promise-to-Pay" in s for s in res_with.positive_signals)
+
+
+def test_mandate_failure_codes_risk_scoring():
+    """Test risk scoring across UPI/NACH mandate failure taxonomy."""
+    # 1. NPCI Central Switch Downtime (Highest Tier Infra Issue)
+    res_npci = RevenueRiskEngine.assess_risk(
+        amount=20000.0,
+        failure_code="npci_downtime",
+        source_type=RecoverySourceType.MANDATE_FAILURE,
+        customer_segment=CustomerSegment.SMB,
+        past_successful_payments=5,
+    )
+    assert res_npci.recovery_probability >= 0.85
+    assert any("Transient error" in s for s in res_npci.positive_signals)
+
+    # 2. Bank Server Core Banking Outage
+    res_bank = RevenueRiskEngine.assess_risk(
+        amount=25000.0,
+        failure_code="bank_server_error",
+        source_type=RecoverySourceType.MANDATE_FAILURE,
+        customer_segment=CustomerSegment.SMB,
+        past_successful_payments=4,
+    )
+    assert res_bank.recovery_probability >= 0.80
+
+    # 3. Scheduled Mandate Low Balance
+    res_low_bal = RevenueRiskEngine.assess_risk(
+        amount=15000.0,
+        failure_code="low_balance_recurring",
+        source_type=RecoverySourceType.MANDATE_FAILURE,
+        customer_segment=CustomerSegment.RETAIL,
+        past_successful_payments=2,
+    )
+    assert 0.50 <= res_low_bal.recovery_probability <= 0.70
+
+    # 4. Mandate Limit Exceeded
+    res_limit = RevenueRiskEngine.assess_risk(
+        amount=50000.0,
+        failure_code="mandate_amount_exceeded",
+        source_type=RecoverySourceType.MANDATE_FAILURE,
+        customer_segment=CustomerSegment.SMB,
+        past_successful_payments=3,
+    )
+    assert 0.50 <= res_limit.recovery_probability <= 0.70
+
+    # 5. Mandate Expired (Requires renewal, not auto-retry)
+    res_exp = RevenueRiskEngine.assess_risk(
+        amount=12000.0,
+        failure_code="mandate_expired",
+        source_type=RecoverySourceType.MANDATE_FAILURE,
+        customer_segment=CustomerSegment.RETAIL,
+        past_successful_payments=0,
+    )
+    assert res_exp.recovery_probability <= 0.20
+    assert any("Severe failure code" in s for s in res_exp.negative_signals)
+
+    # 6. Mandate Revoked by Customer at Bank (Essentially unrecoverable via retry)
+    res_revoked = RevenueRiskEngine.assess_risk(
+        amount=18000.0,
+        failure_code="mandate_revoked",
+        source_type=RecoverySourceType.MANDATE_FAILURE,
+        customer_segment=CustomerSegment.RETAIL,
+        past_successful_payments=0,
+    )
+    assert res_revoked.recovery_probability <= 0.10
+    assert any("Severe failure code" in s for s in res_revoked.negative_signals)

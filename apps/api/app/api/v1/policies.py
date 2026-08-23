@@ -22,6 +22,8 @@ class PolicyCreateRequest(BaseModel):
     human_approval_threshold: float = Field(default=100000.0, ge=1000.0)
     retry_delay_hours: int = Field(default=24, ge=1, le=168)
     escalation_delay_hours: int = Field(default=72, ge=1, le=336)
+    mandate_retry_window_hours: int = Field(default=24, ge=1, le=168)
+    max_mandate_attempts_per_cycle: int = Field(default=3, ge=1, le=10)
     rules_json: Optional[Dict[str, Any]] = None
 
 
@@ -45,6 +47,8 @@ async def get_active_policy(db: AsyncSession = Depends(get_db)):
         "human_approval_threshold": policy.human_approval_threshold,
         "retry_delay_hours": policy.retry_delay_hours,
         "escalation_delay_hours": policy.escalation_delay_hours,
+        "mandate_retry_window_hours": policy.mandate_retry_window_hours,
+        "max_mandate_attempts_per_cycle": policy.max_mandate_attempts_per_cycle,
         "rules": policy.rules_json or {},
         "created_at": policy.created_at.isoformat(),
     }
@@ -70,6 +74,8 @@ async def list_policies(db: AsyncSession = Depends(get_db)):
                 "human_approval_threshold": p.human_approval_threshold,
                 "retry_delay_hours": p.retry_delay_hours,
                 "escalation_delay_hours": p.escalation_delay_hours,
+                "mandate_retry_window_hours": p.mandate_retry_window_hours,
+                "max_mandate_attempts_per_cycle": p.max_mandate_attempts_per_cycle,
                 "rules": p.rules_json or {},
                 "created_at": p.created_at.isoformat(),
             }
@@ -110,6 +116,8 @@ async def create_policy_version(
         human_approval_threshold=req.human_approval_threshold,
         retry_delay_hours=req.retry_delay_hours,
         escalation_delay_hours=req.escalation_delay_hours,
+        mandate_retry_window_hours=req.mandate_retry_window_hours,
+        max_mandate_attempts_per_cycle=req.max_mandate_attempts_per_cycle,
         rules_json=req.rules_json or {
             "disallowed_failure_codes": ["fraud_suspected", "stolen_card", "account_frozen", "sanction_block"],
         },

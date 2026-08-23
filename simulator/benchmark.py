@@ -1,7 +1,7 @@
 """Side-by-Side Recovery Benchmark Engine: Baseline vs RecoverAI."""
 import random
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from simulator.generator import SyntheticTransactionGenerator, SyntheticTransaction
 
 
@@ -45,8 +45,10 @@ class RecoveryBenchmarkRunner:
     """Executes deterministic side-by-side comparison between baseline recovery and RecoverAI."""
 
     @classmethod
-    def run_benchmark(cls, count: int = 100, seed: int = 42) -> BenchmarkResult:
-        transactions = SyntheticTransactionGenerator.generate_batch(count=count, seed=seed)
+    def run_benchmark(
+        cls, count: int = 100, seed: int = 42, mandate_ratio: Optional[float] = None
+    ) -> BenchmarkResult:
+        transactions = SyntheticTransactionGenerator.generate_batch(count=count, seed=seed, mandate_ratio=mandate_ratio)
         rng = random.Random(seed + 1000)
 
         total_risk = sum(t.amount for t in transactions)
@@ -81,18 +83,24 @@ class RecoveryBenchmarkRunner:
             if t.is_fraud:
                 # Blind retry attempted on fraud (risky) -> declines
                 baseline_success = False
-            elif code == "network_timeout":
-                # Blind immediate retry during congested window
-                baseline_success = rng.random() < 0.38
-            elif code == "insufficient_funds":
-                # Blind immediate retry before balance reload
-                baseline_success = rng.random() < 0.18
-            elif code == "card_expired":
-                # Blind retry fails deterministically because card is invalid
+            elif code in ["card_expired", "mandate_expired", "mandate_revoked"]:
+                # Blind retry fails deterministically because card/mandate is expired or revoked
+                baseline_success = False
+            elif code == "mandate_amount_exceeded":
+                # Blind retry with unchanged excessive amount fails deterministically
                 baseline_success = False
             elif code == "checkout_abandoned":
                 # No cart abandonment recovery system in baseline
                 baseline_success = False
+            elif code == "network_timeout":
+                # Blind immediate retry during congested window
+                baseline_success = rng.random() < 0.38
+            elif code in ["npci_downtime", "bank_server_error"]:
+                # Blind immediate retry during central/bank switch outage fails with high probability
+                baseline_success = rng.random() < 0.22
+            elif code in ["insufficient_funds", "low_balance_recurring"]:
+                # Blind immediate retry before balance reload
+                baseline_success = rng.random() < 0.18
             else:
                 baseline_success = rng.random() < 0.20
 
@@ -114,6 +122,14 @@ class RecoveryBenchmarkRunner:
                 action_taken = "POLICY_BLOCKED_FRAUD"
                 recoverai_success = False
 
+            elif code in ["mandate_expired", "mandate_revoked"]:
+                # Policy Gate strictly blocks auto-retries on expired/revoked mandates; routes to renewal
+                auto_interventions += 1
+                action_taken = "REQUEST_MANDATE_RENEWAL"
+                policy_decision = "ALLOWED"
+                # Multi-channel 1-click mandate re-authorization / renewal workflow
+                recoverai_success = rng.random() < (0.72 if code == "mandate_expired" else 0.42)
+
             elif amt >= 100000.0:
                 # Policy Gate: High value human escalation
                 human_escalations += 1
@@ -121,6 +137,18 @@ class RecoveryBenchmarkRunner:
                 action_taken = "HUMAN_ESCALATED_CALL"
                 # Relationship manager outreach achieves 85% success on enterprise accounts
                 recoverai_success = rng.random() < 0.85
+
+            elif code in ["npci_downtime", "bank_server_error"]:
+                # Resequence mandate retry aligned with NPCI settlement window & bank recovery
+                auto_interventions += 1
+                action_taken = "RESEQUENCE_MANDATE_RETRY"
+                recoverai_success = rng.random() < 0.92
+
+            elif code in ["low_balance_recurring", "mandate_amount_exceeded"]:
+                # Resequence mandate retry with cycle cooldown / smart split
+                auto_interventions += 1
+                action_taken = "RESEQUENCE_MANDATE_RETRY"
+                recoverai_success = rng.random() < 0.78
 
             elif code == "network_timeout":
                 # Smart off-peak retry (low traffic window)

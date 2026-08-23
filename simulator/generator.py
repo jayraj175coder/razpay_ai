@@ -37,7 +37,7 @@ CUSTOMER_COMPANIES = [
     ("FreshGrocers Direct", "RETAIL", 28000.0),
 ]
 
-FAILURE_TAXONOMY = [
+STANDARD_FAILURE_TAXONOMY = [
     # (failure_code, source_type, avg_amount, failure_message, is_fraud, weight)
     ("network_timeout", "SUBSCRIPTION_DUNNING", 18500.0, "Interbank switch timeout during debit", False, 30),
     ("insufficient_funds", "PAYMENT_FAILURE", 35000.0, "Temporary insufficient funds in account", False, 25),
@@ -47,29 +47,56 @@ FAILURE_TAXONOMY = [
     ("fraud_suspected", "PAYMENT_FAILURE", 8500.0, "Stolen card velocity trigger", True, 2),
 ]
 
+MANDATE_FAILURE_TAXONOMY = [
+    # (failure_code, source_type, avg_amount, failure_message, is_fraud, weight)
+    ("npci_downtime", "MANDATE_FAILURE", 22000.0, "NPCI central switch downtime during recurring cycle", False, 25),
+    ("low_balance_recurring", "MANDATE_FAILURE", 16500.0, "Scheduled mandate execution hit temporary low balance", False, 25),
+    ("bank_server_error", "MANDATE_FAILURE", 28000.0, "Issuer bank core banking system unavailable", False, 20),
+    ("mandate_amount_exceeded", "MANDATE_FAILURE", 45000.0, "Debit amount exceeds pre-approved e-mandate limit", False, 12),
+    ("mandate_expired", "MANDATE_FAILURE", 12000.0, "e-Mandate validity period expired", False, 10),
+    ("mandate_revoked", "MANDATE_FAILURE", 15000.0, "Customer cancelled standing instruction at issuing bank", False, 8),
+]
+
+FAILURE_TAXONOMY = STANDARD_FAILURE_TAXONOMY
+
 
 class SyntheticTransactionGenerator:
     """Generates realistic, seed-deterministic batches of revenue-at-risk transactions."""
 
     @classmethod
-    def generate_batch(cls, count: int = 100, seed: int = 42) -> List[SyntheticTransaction]:
+    def generate_batch(
+        cls, count: int = 100, seed: int = 42, mandate_ratio: Optional[float] = None
+    ) -> List[SyntheticTransaction]:
         rng = random.Random(seed)
         transactions: List[SyntheticTransaction] = []
 
-        codes, source_types, avg_amounts, msgs, frauds, weights = zip(*FAILURE_TAXONOMY)
+        std_codes, std_source_types, std_avg_amounts, std_msgs, std_frauds, std_weights = zip(*STANDARD_FAILURE_TAXONOMY)
+        mnd_codes, mnd_source_types, mnd_avg_amounts, mnd_msgs, mnd_frauds, mnd_weights = zip(*MANDATE_FAILURE_TAXONOMY)
 
         for i in range(count):
             comp_name, segment, ltv = rng.choice(CUSTOMER_COMPANIES)
             cust_id = f"cust_sim_{uuid.UUID(int=rng.getrandbits(128)).hex[:8]}"
             cust_email = f"finance@{comp_name.lower().replace(' ', '').replace('pvtltd', '').replace('llp', '')}.in"
 
-            # Pick failure profile weighted
-            idx = rng.choices(range(len(FAILURE_TAXONOMY)), weights=weights, k=1)[0]
-            code = codes[idx]
-            source_type = source_types[idx]
-            base_amt = avg_amounts[idx]
-            msg = msgs[idx]
-            is_fraud = frauds[idx]
+            # Pick failure profile
+            if mandate_ratio is not None and mandate_ratio > 0.0 and rng.random() < mandate_ratio:
+                idx = rng.choices(range(len(MANDATE_FAILURE_TAXONOMY)), weights=mnd_weights, k=1)[0]
+                code, source_type, base_amt, msg, is_fraud = (
+                    mnd_codes[idx],
+                    mnd_source_types[idx],
+                    mnd_avg_amounts[idx],
+                    mnd_msgs[idx],
+                    mnd_frauds[idx],
+                )
+            else:
+                idx = rng.choices(range(len(STANDARD_FAILURE_TAXONOMY)), weights=std_weights, k=1)[0]
+                code, source_type, base_amt, msg, is_fraud = (
+                    std_codes[idx],
+                    std_source_types[idx],
+                    std_avg_amounts[idx],
+                    std_msgs[idx],
+                    std_frauds[idx],
+                )
 
             # Jitter amount by +/- 30%
             jitter = rng.uniform(0.7, 1.3)
